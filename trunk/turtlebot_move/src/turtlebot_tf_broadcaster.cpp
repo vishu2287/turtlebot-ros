@@ -16,7 +16,7 @@ void odom_callback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg
 int main(int argc, char** argv){
   ros::init(argc, argv, "turtlebot_tf_broadcaster");
   ros::NodeHandle node;
-  ros::Subscriber sub = node.subscribe("/odom_combined", 10, &odom_callback);
+  ros::Subscriber sub = node.subscribe("/odom_combined", 100, &odom_callback);
 
   ros::spin();
   return 0;
