@@ -7,12 +7,24 @@
 #include <math.h>
 #include <tf/transform_listener.h>
 #include <algorithm>
+#include <turtlebot_move/Moves.h>
 using namespace std;
+
+enum MOVE_TYPE {LINEAR, ANGULAR};
+struct Move
+{
+  MOVE_TYPE type;
+  float value;
+};
+struct Moves
+{
+  vector<Move> moves;
+};
 
 class TurtlebotMove
 {
 public:
-  typedef typename geometry_msgs::Twist move_msg_type;
+  typedef typename turtlebot_move::Moves move_msg_type;
   struct Orientation
   {
     float x, y, yaw;
@@ -59,27 +71,51 @@ private:
   ros::Subscriber move_instruction;
   ros::Publisher teleop;
   float ros_rate;
+  Moves moves;
 };
+
+
 
 void TurtlebotMove::turtlebot_move_callback (const TurtlebotMove::move_msg_type::ConstPtr& msg)
 {
-  length = msg->linear.x;
-  angle = msg->linear.y;
-  sides = msg->linear.z;
-  std::cout << "Instruction for move received\nlength: " << length << "\nangle: " << angle << "\nsides: " << sides << endl;
+  moves.moves.clear();
+  for(int i=0;i<msg->moves.size() && nh.ok();i++)
+  {
+    Move move;
+    if((*msg).moves[i].type.compare("linear")==0 || (*msg).moves[i].type.compare("Linear")==0)
+    {
+      move.type = LINEAR;
+    }
+    else if((*msg).moves[i].type.compare("angular")==0 || (*msg).moves[i].type.compare("Angular")==0)
+    {
+      move.type = ANGULAR;
+    }
+    else
+    {
+      continue;
+    }
+    move.value = msg->moves[i].value;
+    moves.moves.push_back(move);
+  }
   move();
 }
 
 void TurtlebotMove::move ()
 {
-  for(int i=1; i<=sides && ros::ok(); i++)
+  for(int i=0; i<moves.moves.size() && nh.ok(); i++)
   {
-    cout << "Moving on side " << i << endl;
-    move_straight(length);
-    cout << "Turning" << endl;
-    turn(angle);
-    cout << "Move completed" << endl;
+    if(moves.moves[i].type==LINEAR)
+    {
+      cout << "Moving linearly for distance " << moves.moves[i].value << "m" << endl;
+      move_straight(moves.moves[i].value);
+    }
+    else if(moves.moves[i].type==ANGULAR)
+    {
+      cout << "Rotating by " << moves.moves[i].value << " degrees" << endl;
+      turn(moves.moves[i].value);
+    }
   }
+  cout << "Move complete" << endl;
 }
 
 bool TurtlebotMove::get_current_orientation (Orientation& o)
