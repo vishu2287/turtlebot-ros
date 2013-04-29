@@ -25,13 +25,18 @@ public:
     }
   };
   TurtlebotMove ():
-		length_threshold (0.02f)
-		, max_linear_speed (0.1f)
-		, max_angular_speed (0.5f)
-		, min_angular_speed (-0.5f)
+		length_threshold (0.005f)
+		, max_linear_speed (0.2f)
+		, min_linear_speed (-0.2f)
+		, min_positive_linear_speed (0.02f)
+		, max_negative_linear_speed (-0.02f)
+		, max_angular_speed (0.7f)
+		, min_angular_speed (-0.7f)
+		, min_positive_angular_speed (0.15f)
+		, max_negative_angular_speed (-0.15f)
 		, ros_rate (20.0)
-		, angular_scale (3.52/360) // degrees to odom scale
-		, angular_threshold (0.1f)
+		, angular_scale (3.60/360) // degrees to odom scale
+		, angular_threshold (0.02f)
 		, PI (3.141592f)
   {
     boost::function<void (const move_msg_type::ConstPtr&)> cb1(boost::bind(&TurtlebotMove::turtlebot_move_callback, this, _1));
@@ -47,8 +52,8 @@ public:
   void run ();
 private:
   int sides;
-  float length, length_threshold, max_linear_speed; // metres
-  float angle/*degrees*/, angular_speed, angular_scale, angular_threshold, max_angular_speed, min_angular_speed;
+  float length, length_threshold, max_linear_speed, min_linear_speed, min_positive_linear_speed, max_negative_linear_speed; // metres
+  float angle/*degrees*/, angular_speed, angular_scale, angular_threshold, max_angular_speed, min_angular_speed, min_positive_angular_speed, max_negative_angular_speed;
   const float PI;
   ros::NodeHandle nh;
   ros::Subscriber move_instruction;
@@ -118,13 +123,25 @@ void TurtlebotMove::move_straight (float len)
   {
     printf("Waiting for transform\n");
   }
-  
   curo = o;
   float d = 0;
+  bool reverse = false;
+  if(len<0)
+    reverse = true;
+  len = abs(len);
   
   while (nh.ok() && abs(len-d)>length_threshold){
     geometry_msgs::Twist msg;
-    msg.linear.x = min((len-d), max_linear_speed);
+    if(len>d)
+    {
+      msg.linear.x = max(min((len-d), max_linear_speed), min_positive_linear_speed);
+    }
+    else
+    {
+      msg.linear.x = min(max((len-d), min_linear_speed), max_negative_linear_speed);
+    }
+    if(reverse)
+      msg.linear.x = -msg.linear.x;
     
     printf("Sending message to move with linear speed: %f\n", msg.linear.x);
     
@@ -137,6 +154,7 @@ void TurtlebotMove::move_straight (float len)
       printf("Waiting for transform\n");
     }
     d = l2_distance(o.x, o.y, curo.x, curo.y);
+    printf("Done %f\n", d);
   }
 }
 
@@ -156,19 +174,29 @@ void TurtlebotMove::turn (float ang)
   curo = o;
   prevo = o;
   float done = 0.0f;
+  bool reverse = false;
+  if(ang<0)
+  {
+    reverse = true;
+  }
+  ang = abs(ang);
   float to_rotate = angular_scale*ang;
-  printf("Beginning to rotate by %f\n", to_rotate);
+  printf("Beginning to rotate by %f\n", reverse?-to_rotate:to_rotate);
   
-  while (nh.ok() && abs(to_rotate-done)>angular_threshold){
+  while (nh.ok() && abs(to_rotate-abs(done))>angular_threshold){
     geometry_msgs::Twist msg;
-    if(to_rotate>0)
+    float factor = 2.0f;
+    if(to_rotate>abs(done))
     {
-      msg.angular.z = min((to_rotate-done), max_angular_speed);
+      msg.angular.z = max(min(factor*(to_rotate-abs(done)), max_angular_speed), min_positive_angular_speed);
     }
     else
     {
-      msg.angular.z = max((to_rotate-done), min_angular_speed);
+      msg.angular.z = min(max(factor*(to_rotate-abs(done)), min_angular_speed), max_negative_angular_speed);
     }
+    if(reverse)
+      msg.angular.z = -msg.angular.z;
+    
     printf("Sending message to move with angular speed: %f\n", msg.angular.z);
     
     teleop.publish (msg);
@@ -181,15 +209,15 @@ void TurtlebotMove::turn (float ang)
     }
     
     float temp = curo.yaw-prevo.yaw;
+    if(temp<-3)
+    {
+      temp+=2*PI;
+    }
+    else if(temp>3)
+    {
+      temp-=2*PI;
+    }
     done += temp;
-    if(msg.angular.z>0 && temp<-3)
-    {
-      done+=PI;
-    }
-    else if(msg.angular.z<0 && temp>3)
-    {
-      done-=PI;
-    }
     
     prevo = curo;
     printf("Done %f\n", done);
